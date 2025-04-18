@@ -18,6 +18,11 @@ import msoffcrypto
 import shutil
 from win32com import client
 import win32com.client
+import requests
+import sys
+import zipfile
+from threading import Thread
+from urllib.parse import urljoin
 
 # 设置DPI感知
 try:
@@ -43,9 +48,14 @@ def convert_file(file_path, save_path, conv_type, quality, config):
             output_ext = ".pdf"
         elif conv_type == "pdf2ppt":
             output_ext = f".{config.get('ppt_format', 'pptx')}"
+        elif conv_type == "image2pdf":
+            output_ext = ".pdf"
+        elif conv_type == "pdf2image":
+            output_ext = f".{config.get('image_format', 'png')}"
         else:
-            return {"success": False, "file_name": file_name, "error": "不支持的转换类型"}
+            output_ext = ".pdf"
         
+        # 构建输出文件路径
         output_path = os.path.join(save_path, os.path.splitext(file_name)[0] + output_ext)
         
         if conv_type == "pdf2word":
@@ -137,6 +147,94 @@ def convert_file(file_path, save_path, conv_type, quality, config):
     except Exception as e:
         return {"success": False, "file_name": file_name, "error": str(e)}
 
+class UpdateManager:
+    def __init__(self, app):
+        self.app = app
+        self.update_url = "https://api.github.com/repos/yourusername/pdfword/releases/latest"
+        self.current_version = "1.0.0"  # 当前版本号
+        self.download_path = "update.zip"
+        
+    def check_update(self):
+        """检查是否有新版本"""
+        try:
+            response = requests.get(self.update_url)
+            if response.status_code == 200:
+                latest_release = response.json()
+                latest_version = latest_release['tag_name'].lstrip('v')
+                
+                if self.compare_versions(latest_version, self.current_version) > 0:
+                    return {
+                        'available': True,
+                        'version': latest_version,
+                        'url': latest_release['assets'][0]['browser_download_url'],
+                        'description': latest_release['body']
+                    }
+            return {'available': False}
+        except Exception as e:
+            print(f"检查更新时出错: {str(e)}")
+            return {'available': False, 'error': str(e)}
+    
+    def compare_versions(self, v1, v2):
+        """比较版本号"""
+        v1_parts = list(map(int, v1.split('.')))
+        v2_parts = list(map(int, v2.split('.')))
+        
+        for i in range(max(len(v1_parts), len(v2_parts))):
+            v1_part = v1_parts[i] if i < len(v1_parts) else 0
+            v2_part = v2_parts[i] if i < len(v2_parts) else 0
+            
+            if v1_part > v2_part:
+                return 1
+            elif v1_part < v2_part:
+                return -1
+        return 0
+    
+    def download_update(self, url):
+        """下载更新包"""
+        try:
+            response = requests.get(url, stream=True)
+            total_size = int(response.headers.get('content-length', 0))
+            
+            with open(self.download_path, 'wb') as f:
+                downloaded = 0
+                for data in response.iter_content(chunk_size=4096):
+                    downloaded += len(data)
+                    f.write(data)
+                    # 更新下载进度
+                    if total_size > 0:
+                        progress = (downloaded / total_size) * 100
+                        self.app.update_download_progress(progress)
+            
+            return True
+        except Exception as e:
+            print(f"下载更新时出错: {str(e)}")
+            return False
+    
+    def install_update(self):
+        """安装更新"""
+        try:
+            # 解压更新包
+            with zipfile.ZipFile(self.download_path, 'r') as zip_ref:
+                zip_ref.extractall("temp_update")
+            
+            # 复制新文件
+            for root, dirs, files in os.walk("temp_update"):
+                for file in files:
+                    src_path = os.path.join(root, file)
+                    dst_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
+                                          os.path.relpath(src_path, "temp_update"))
+                    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                    shutil.copy2(src_path, dst_path)
+            
+            # 清理临时文件
+            shutil.rmtree("temp_update")
+            os.remove(self.download_path)
+            
+            return True
+        except Exception as e:
+            print(f"安装更新时出错: {str(e)}")
+            return False
+
 class FileConverterApp:
     def __init__(self, root):
         self.root = root
@@ -149,43 +247,23 @@ class FileConverterApp:
         # 初始化配置
         self.config = self.load_config()
         
-        # 创建质量选项的中文映射
-        self.quality_map = {
-            "high": "高质量",
-            "normal": "标准",
-            "low": "低质量"
-        }
-        self.quality_reverse_map = {
-            "高质量": "high",
-            "标准": "normal",
-            "低质量": "low"
-        }
+        # 初始化自动打开变量
+        self.auto_open_var = tk.BooleanVar(value=self.config.get('auto_open', False))
         
-        # 设置主题
-        self.style = ttk.Style()
-        theme = self.config.get('theme', 'superhero')
-        self.style.theme_use(theme)
+        # 初始化更新管理器
+        self.update_manager = UpdateManager(self)
         
-        # 初始化主题颜色
-        self.update_all_windows_theme()
+        # 创建更新进度窗口
+        self.create_update_window()
         
-        # 应用自定义颜色
-        self.style.configure('.', 
-                           foreground=self.config.get('fg_color', '#ffffff'),
-                           background=self.config.get('bg_color', '#2b3e50'))
-        
-        # 创建历史记录窗口（移到前面）
+        # 创建历史记录窗口
         self.history_window = tk.Toplevel(root)
         self.history_window.title("转换历史")
-        self.history_window.geometry("1000x1000")  # 增加窗口宽度
-        self.history_window.minsize(1000, 1000)    # 调整最小尺寸
-        self.history_window.maxsize(1000, 1000)    # 调整最大尺寸
+        self.history_window.geometry("1000x1000")
+        self.history_window.minsize(1000, 1000)
+        self.history_window.maxsize(1000, 1000)
         self.history_window.resizable(False, False)
-        
-        # 移除窗口标题栏和控制按钮
         self.history_window.overrideredirect(True)
-        
-        # 初始化历史窗口状态
         self.history_window_visible = True
         
         # 创建历史记录主框架
@@ -215,10 +293,10 @@ class FileConverterApp:
         )
         self.close_history_button.pack(side=tk.RIGHT)
         
-        # 创建历史记录列表框架（添加水平和垂直滚动条）
+        # 创建历史记录列表框架
         list_frame = ttk.Frame(self.history_main_frame)
         list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-
+        
         # 创建水平滚动条
         h_scrollbar = ttk.Scrollbar(
             list_frame,
@@ -226,7 +304,7 @@ class FileConverterApp:
             bootstyle="round"
         )
         h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-
+        
         # 创建垂直滚动条
         v_scrollbar = ttk.Scrollbar(
             list_frame,
@@ -250,7 +328,7 @@ class FileConverterApp:
             yscrollcommand=v_scrollbar.set
         )
         self.history_list.pack(fill=tk.BOTH, expand=True)
-
+        
         # 配置滚动条
         h_scrollbar.config(command=self.history_list.xview)
         v_scrollbar.config(command=self.history_list.yview)
@@ -282,13 +360,6 @@ class FileConverterApp:
         # 加载历史记录
         self.load_history()
         
-        # 绑定窗口关闭事件
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.history_window.protocol("WM_DELETE_WINDOW", self.on_closing)
-        
-        # 绑定快捷键
-        self.bind_shortcuts()
-        
         # 创建主框架
         self.main_frame = ttk.Frame(root, padding="20")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -296,6 +367,34 @@ class FileConverterApp:
         # 创建标题区域
         self.header_frame = ttk.Frame(self.main_frame)
         self.header_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # 初始化并行处理数量
+        self.parallel_count = tk.StringVar(value="4")  # 默认使用4个进程
+        
+        # 创建质量选项的中文映射
+        self.quality_map = {
+            "high": "高质量",
+            "normal": "标准",
+            "low": "低质量"
+        }
+        self.quality_reverse_map = {
+            "高质量": "high",
+            "标准": "normal",
+            "低质量": "low"
+        }
+        
+        # 设置主题
+        self.style = ttk.Style()
+        theme = self.config.get('theme', 'superhero')
+        self.style.theme_use(theme)
+        
+        # 初始化主题颜色
+        self.update_all_windows_theme()
+        
+        # 应用自定义颜色
+        self.style.configure('.', 
+                           foreground=self.config.get('fg_color', '#ffffff'),
+                           background=self.config.get('bg_color', '#2b3e50'))
         
         # 创建标题
         self.header_label = ttk.Label(
@@ -316,6 +415,16 @@ class FileConverterApp:
         )
         self.advanced_settings_button.pack(side=tk.RIGHT, padx=10)
         
+        # 添加更新按钮（放在高级设置按钮旁边）
+        self.update_button = ttk.Button(
+            self.header_frame,
+            text="检查更新",
+            command=self.check_for_updates,
+            width=10,
+            bootstyle="info"
+        )
+        self.update_button.pack(side=tk.RIGHT, padx=5)
+        
         # 添加历史记录控制按钮
         self.history_control_button = ttk.Button(
             self.header_frame,
@@ -326,9 +435,12 @@ class FileConverterApp:
         )
         self.history_control_button.pack(side=tk.RIGHT, padx=5)
         
-        # 绑定窗口状态变化事件
-        self.root.bind('<Unmap>', self.on_window_minimize)  # 窗口最小化事件
-        self.root.bind('<Map>', self.on_window_restore)     # 窗口恢复事件
+        # 绑定窗口关闭事件
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.history_window.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # 绑定快捷键
+        self.bind_shortcuts()
         
         # 设置窗口居中显示
         self.root.update_idletasks()
@@ -1802,6 +1914,23 @@ class FileConverterApp:
         settings_frame = ttk.Frame(dialog, padding="20")
         settings_frame.pack(fill=tk.BOTH, expand=True)
         
+        # 通用设置
+        general_frame = ttk.Labelframe(
+            settings_frame,
+            text="通用设置",
+            padding="10",
+            bootstyle="info"
+        )
+        general_frame.pack(fill=tk.X, pady=10)
+        
+        # 自动打开选项
+        ttk.Checkbutton(
+            general_frame,
+            text="转换完成后自动打开文件",
+            variable=self.auto_open_var,
+            bootstyle="info"
+        ).pack(anchor=tk.W, pady=5)
+        
         # PDF设置
         pdf_frame = ttk.Labelframe(
             settings_frame,
@@ -1999,7 +2128,8 @@ class FileConverterApp:
                 'pdf_quality': self.pdf_quality_var.get(),
                 'word_format': self.word_format_var.get(),
                 'excel_format': self.excel_format_var.get(),
-                'ppt_format': self.ppt_format_var.get()
+                'ppt_format': self.ppt_format_var.get(),
+                'auto_open': self.auto_open_var.get()
             })
             
             # 保存配置
@@ -3182,6 +3312,121 @@ class FileConverterApp:
             self.save_templates()
             self.update_template_list()
             messagebox.showinfo("成功", "模板删除成功！")
+
+    def create_update_window(self):
+        """创建更新进度窗口"""
+        self.update_window = tk.Toplevel(self.root)
+        self.update_window.title("更新进度")
+        self.update_window.geometry("400x200")
+        self.update_window.resizable(False, False)
+        self.update_window.withdraw()  # 初始时隐藏
+        
+        # 创建进度条
+        self.update_progress = ttk.Progressbar(
+            self.update_window,
+            length=300,
+            mode='determinate'
+        )
+        self.update_progress.pack(pady=20)
+        
+        # 创建状态标签
+        self.update_status = ttk.Label(
+            self.update_window,
+            text="正在检查更新...",
+            font=('微软雅黑', 10)
+        )
+        self.update_status.pack(pady=10)
+        
+        # 创建按钮框架
+        button_frame = ttk.Frame(self.update_window)
+        button_frame.pack(pady=10)
+        
+        # 取消按钮
+        self.cancel_button = ttk.Button(
+            button_frame,
+            text="取消",
+            command=self.cancel_update,
+            width=10
+        )
+        self.cancel_button.pack(side=tk.LEFT, padx=5)
+        
+        # 安装按钮
+        self.install_button = ttk.Button(
+            button_frame,
+            text="安装",
+            command=self.install_update,
+            width=10,
+            state='disabled'
+        )
+        self.install_button.pack(side=tk.LEFT, padx=5)
+    
+    def check_for_updates(self):
+        """检查更新"""
+        self.update_window.deiconify()
+        self.update_status.config(text="正在检查更新...")
+        self.update_progress['value'] = 0
+        self.cancel_button.config(state='normal')
+        self.install_button.config(state='disabled')
+        
+        def check():
+            update_info = self.update_manager.check_update()
+            if update_info['available']:
+                self.update_status.config(
+                    text=f"发现新版本 {update_info['version']}\n{update_info['description']}"
+                )
+                self.install_button.config(state='normal')
+            else:
+                self.update_status.config(text="当前已是最新版本")
+                self.root.after(2000, self.update_window.withdraw)
+        
+        Thread(target=check).start()
+    
+    def update_download_progress(self, progress):
+        """更新下载进度"""
+        self.update_progress['value'] = progress
+        self.update_status.config(text=f"正在下载更新: {progress:.1f}%")
+    
+    def install_update(self):
+        """安装更新"""
+        self.install_button.config(state='disabled')
+        self.cancel_button.config(state='disabled')
+        self.update_status.config(text="正在安装更新...")
+        
+        def install():
+            if self.update_manager.install_update():
+                self.update_status.config(text="更新安装完成，请重启程序")
+                self.install_button.config(text="重启", command=self.restart_app)
+                self.install_button.config(state='normal')
+            else:
+                self.update_status.config(text="更新安装失败")
+                self.cancel_button.config(state='normal')
+        
+        Thread(target=install).start()
+    
+    def cancel_update(self):
+        """取消更新"""
+        self.update_window.withdraw()
+    
+    def restart_app(self):
+        """重启程序"""
+        python = sys.executable
+        os.execl(python, python, *sys.argv)
+
+    def get_conversion_type(self, file_path):
+        """根据文件扩展名获取转换类型"""
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in ['.doc', '.docx']:
+            return 'word2pdf'  # 修正：改为 word2pdf
+        elif ext in ['.pdf']:
+            # 暂时只支持转 Word，后续可扩展
+            return 'pdf2word'  # 修正：改为 pdf2word
+        elif ext in ['.xls', '.xlsx']:
+            return 'excel2pdf' # 修正：改为 excel2pdf
+        elif ext in ['.ppt', '.pptx']:
+            return 'ppt2pdf'   # 修正：改为 ppt2pdf
+        # 可以在这里添加更多支持的转换类型，例如 pdf2excel, pdf2ppt
+        else:
+            return None
 
 if __name__ == "__main__":
     root = tk.Tk()
