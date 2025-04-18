@@ -1,0 +1,16 @@
+{
+    "theme": "superhero",
+    "fg_color": "#ffffff",
+    "bg_color": "#2b3e50",
+    "default_save_path": "C:/Users/63138/Desktop",
+    "shortcuts": {
+        "select_files": "Control-o",
+        "start_convert": "Control-r"
+    },
+    "pdf_quality": "high",
+    "auto_open": true,
+    "word_format": "docx",
+    "excel_format": "xlsx",
+    "ppt_format": "pptx",
+    "pdf_dpi": 300
+}
