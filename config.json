@@ -1,0 +1,9 @@
+{
+    "pdf_quality": "high",
+    "auto_open": true,
+    "word_format": "docx",
+    "excel_format": "xlsx",
+    "ppt_format": "pptx",
+    "pdf_dpi": 300,
+    "theme": "superhero"
+}

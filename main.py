@@ -150,7 +150,7 @@ def convert_file(file_path, save_path, conv_type, quality, config):
 class UpdateManager:
     def __init__(self, app):
         self.app = app
-        self.update_url = "https://api.github.com/repos/yourusername/pdfword/releases/latest"
+        self.update_url = "https://api.github.com/repos/alove77580/pdfword/releases/latest"
         self.current_version = "1.0.0"  # 当前版本号
         self.download_path = "update.zip"
         
