@@ -151,7 +151,7 @@ class UpdateManager:
     def __init__(self, app):
         self.app = app
         self.update_url = "https://api.github.com/repos/alove77580/fileConvert/releases/latest"  # 修改为正确的仓库地址
-        self.current_version = "1.0.0"  # 当前版本号
+        self.current_version = "1.0.1"  # 当前版本号
         self.download_path = "update.zip"
         
     def check_update(self):
