@@ -150,7 +150,7 @@ def convert_file(file_path, save_path, conv_type, quality, config):
 class UpdateManager:
     def __init__(self, app):
         self.app = app
-        self.update_url = "https://api.github.com/repos/alove77580/pdfword/releases/latest"
+        self.update_url = "https://api.github.com/repos/alove77580/fileConvert/releases/latest"  # 修改为正确的仓库地址
         self.current_version = "1.0.0"  # 当前版本号
         self.download_path = "update.zip"
         
@@ -169,6 +169,12 @@ class UpdateManager:
                         'url': latest_release['assets'][0]['browser_download_url'],
                         'description': latest_release['body']
                     }
+            elif response.status_code == 404:
+                print("更新检查失败：仓库不存在或无法访问")
+                return {'available': False, 'error': '仓库不存在或无法访问'}
+            else:
+                print(f"更新检查失败：HTTP {response.status_code}")
+                return {'available': False, 'error': f'HTTP {response.status_code}'}
             return {'available': False}
         except Exception as e:
             print(f"检查更新时出错: {str(e)}")
@@ -239,10 +245,9 @@ class FileConverterApp:
     def __init__(self, root):
         self.root = root
         self.root.title("星空-文件转换工具")
-        self.root.geometry("800x600")
-        self.root.minsize(1000, 1500)
-        self.root.maxsize(1000, 1500)
-        self.root.resizable(False, False)
+        self.root.geometry("1000x1500")  # 设置初始大小
+        self.root.minsize(1000, 1500)  # 设置最小大小
+        self.root.resizable(True, True)  # 允许调整大小
         
         # 初始化配置
         self.config = self.load_config()
@@ -259,11 +264,9 @@ class FileConverterApp:
         # 创建历史记录窗口
         self.history_window = tk.Toplevel(root)
         self.history_window.title("转换历史")
-        self.history_window.geometry("1000x1000")
-        self.history_window.minsize(1000, 1000)
-        self.history_window.maxsize(1000, 1000)
-        self.history_window.resizable(False, False)
-        self.history_window.overrideredirect(True)
+        self.history_window.geometry("800x600")  # 设置初始大小
+        self.history_window.minsize(600, 400)  # 设置最小大小
+        self.history_window.resizable(True, True)  # 允许调整大小
         self.history_window_visible = True
         
         # 创建历史记录主框架
