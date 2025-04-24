@@ -209,7 +209,7 @@ class UpdateManager:
     def __init__(self, app):
         self.app = app
         self.update_url = "https://api.github.com/repos/alove77580/fileConvert/releases/latest"  # 修改为正确的仓库地址
-        self.current_version = "1.0.2"  # 当前版本号
+        self.current_version = "1.0.3"  # 当前版本号
         self.download_path = "update.zip"
         
     def check_update(self):
@@ -710,12 +710,13 @@ class FileConverterApp:
             padding="20",
             bootstyle="info"
         )
-        self.progress_frame.pack(fill=tk.X, pady=10, padx=100, expand=True)
+        self.progress_frame.pack(fill=tk.BOTH, expand=True, pady=10, padx=100)
         
         # 创建进度条容器
         progress_container = ttk.Frame(self.progress_frame)
         progress_container.pack(fill=tk.BOTH, expand=True, pady=5)
         
+        # 进度条
         self.progress = ttk.Progressbar(
             progress_container, 
             length=400, 
@@ -723,6 +724,27 @@ class FileConverterApp:
             bootstyle="success-striped"
         )
         self.progress.pack(fill=tk.X, expand=True, pady=5)
+        
+        # 创建详细信息显示区域
+        self.details_text = tk.Text(
+            progress_container,
+            height=8,
+            font=('微软雅黑', 9),
+            wrap=tk.WORD,
+            state=tk.DISABLED,
+            bg='#f8f9fa',
+            relief=tk.FLAT
+        )
+        self.details_text.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # 添加滚动条
+        details_scrollbar = ttk.Scrollbar(
+            progress_container,
+            orient=tk.VERTICAL,
+            command=self.details_text.yview
+        )
+        details_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.details_text.configure(yscrollcommand=details_scrollbar.set)
         
         # 创建状态标签
         self.status_label = ttk.Label(
@@ -2913,118 +2935,124 @@ class FileConverterApp:
         # 创建加密/解密对话框
         dialog = tk.Toplevel(self.root)
         dialog.title("文件加密/解密")
-        dialog.geometry("500x510")
-        dialog.resizable(False, False)
-        dialog.transient(self.root)
-        dialog.grab_set()
         
-        # 设置对话框居中显示
-        dialog.update_idletasks()
-        width = dialog.winfo_width()
-        height = dialog.winfo_height()
-        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
-        y = (dialog.winfo_screenheight() // 2) - (height // 2)
-        dialog.geometry(f'{width}x{height}+{x}+{y}')
+        # 计算窗口大小和位置
+        width, height, x, y = self.calculate_window_size(0.35, 0.5, 400, 300)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.minsize(400, 300)
         
         # 创建主框架
-        main_frame = ttk.Frame(dialog, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         # 文件信息
+        info_frame = ttk.LabelFrame(main_frame, text="文件信息", padding=10)
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+        
         ttk.Label(
-            main_frame,
+            info_frame,
             text=f"文件名: {os.path.basename(file_path)}",
             font=('微软雅黑', 10),
-            bootstyle="light"
-        ).pack(anchor=tk.W, pady=(0, 20))
+            wraplength=width-60
+        ).pack(anchor=tk.W)
         
-        # 操作选择
+        # 操作选择框架
+        operation_frame = ttk.LabelFrame(main_frame, text="操作选择", padding=10)
+        operation_frame.pack(fill=tk.X, pady=(0, 10))
+        
         self.operation_var = tk.StringVar(value="encrypt")
         ttk.Radiobutton(
-            main_frame,
+            operation_frame,
             text="加密文件",
             variable=self.operation_var,
             value="encrypt",
+            command=lambda: on_operation_change(),
             bootstyle="info-toolbutton"
         ).pack(anchor=tk.W, pady=2)
         
         ttk.Radiobutton(
-            main_frame,
+            operation_frame,
             text="解密文件",
             variable=self.operation_var,
             value="decrypt",
+            command=lambda: on_operation_change(),
             bootstyle="info-toolbutton"
         ).pack(anchor=tk.W, pady=2)
         
-        # 密码输入
-        ttk.Label(
-            main_frame,
-            text="密码:",
-            font=('微软雅黑', 10),
-            bootstyle="light"
-        ).pack(anchor=tk.W, pady=(20, 5))
+        # 密码输入框架
+        password_frame = ttk.LabelFrame(main_frame, text="密码设置", padding=10)
+        password_frame.pack(fill=tk.X, pady=(0, 10))
         
+        # 密码输入
         self.password_var = tk.StringVar()
-        password_entry = ttk.Entry(
-            main_frame,
+        ttk.Label(
+            password_frame,
+            text="密码:",
+            font=('微软雅黑', 10)
+        ).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.password_entry = ttk.Entry(
+            password_frame,
             textvariable=self.password_var,
             show="*",
             width=30
         )
-        password_entry.pack(fill=tk.X, pady=(0, 10))
+        self.password_entry.pack(fill=tk.X, pady=(0, 10))
         
-        # 确认密码（仅加密时显示）
-        self.confirm_frame = ttk.Frame(main_frame)
+        # 确认密码（仅在加密时显示）
+        self.confirm_frame = ttk.Frame(password_frame)
         self.confirm_frame.pack(fill=tk.X, pady=(0, 20))
         
         ttk.Label(
             self.confirm_frame,
             text="确认密码:",
-            font=('微软雅黑', 10),
-            bootstyle="light"
+            font=('微软雅黑', 10)
         ).pack(anchor=tk.W, pady=(0, 5))
         
         self.confirm_var = tk.StringVar()
-        confirm_entry = ttk.Entry(
+        self.confirm_entry = ttk.Entry(
             self.confirm_frame,
             textvariable=self.confirm_var,
             show="*",
             width=30
         )
-        confirm_entry.pack(fill=tk.X)
+        self.confirm_entry.pack(fill=tk.X)
         
-        # 绑定操作选择变化事件
-        def on_operation_change(*args):
+        # 按钮框架
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # 取消按钮
+        ttk.Button(
+            button_frame,
+            text="取消",
+            command=dialog.destroy,
+            width=15,
+            bootstyle="secondary"
+        ).pack(side=tk.LEFT, padx=5, expand=True)
+        
+        # 确定按钮
+        ttk.Button(
+            button_frame,
+            text="确定",
+            command=lambda: self.start_encryption(file_path, dialog),
+            width=15,
+            bootstyle="info"
+        ).pack(side=tk.LEFT, padx=5, expand=True)
+        
+        def on_operation_change():
+            """处理操作类型变化"""
             if self.operation_var.get() == "encrypt":
                 self.confirm_frame.pack(fill=tk.X, pady=(0, 20))
             else:
                 self.confirm_frame.pack_forget()
+                
+        # 设置对话框为模态
+        dialog.transient(self.root)
+        dialog.grab_set()
         
-        self.operation_var.trace_add("write", on_operation_change)
-        
-        # 创建按钮框架
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=20)
-        
-        # 确定按钮
-        confirm_button = ttk.Button(
-            button_frame,
-            text="确定",
-            command=lambda: self.start_encryption(file_path, dialog),
-            width=10,
-            bootstyle="success"
-        )
-        confirm_button.pack(side=tk.LEFT, padx=5, expand=True)
-        
-        # 取消按钮
-        cancel_button = ttk.Button(
-            button_frame,
-            text="取消",
-            command=dialog.destroy,
-            width=10,
-            bootstyle="danger"
-        )
-        cancel_button.pack(side=tk.LEFT, padx=5, expand=True)
+        # 初始化界面
+        on_operation_change()
     
     def start_encryption(self, file_path, dialog):
         """开始加密/解密文件"""
@@ -3179,146 +3207,136 @@ class FileConverterApp:
         """显示模板管理对话框"""
         dialog = tk.Toplevel(self.root)
         dialog.title("模板管理")
-        dialog.geometry("800x1000")
-        dialog.resizable(False, False)
-        dialog.transient(self.root)
-        dialog.grab_set()
         
-        # 设置对话框居中显示
-        dialog.update_idletasks()
-        width = dialog.winfo_width()
-        height = dialog.winfo_height()
-        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
-        y = (dialog.winfo_screenheight() // 2) - (height // 2)
-        dialog.geometry(f'{width}x{height}+{x}+{y}')
+        # 计算窗口大小和位置
+        width, height, x, y = self.calculate_window_size(0.4, 0.6, 500, 400)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.minsize(500, 400)
         
         # 创建主框架
-        main_frame = ttk.Frame(dialog, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         # 创建模板列表框架
-        list_frame = ttk.Labelframe(main_frame, text="已保存的模板", padding="10")
+        list_frame = ttk.LabelFrame(main_frame, text="已保存的模板", padding=10)
         list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
         
         # 创建模板列表
         self.template_list = tk.Listbox(
             list_frame,
-            width=50,
-            height=10,
             font=('微软雅黑', 10),
-            bg='#2b3e50',
-            fg='white',
-            selectbackground='#0078d7',
-            selectforeground='white',
-            relief=tk.FLAT
+            relief=tk.FLAT,
+            selectmode=tk.SINGLE
         )
-        self.template_list.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.template_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=5)
         
         # 添加滚动条
         scrollbar = ttk.Scrollbar(
             list_frame,
             orient=tk.VERTICAL,
-            command=self.template_list.yview,
-            bootstyle="round"
+            command=self.template_list.yview
         )
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.template_list.config(yscrollcommand=scrollbar.set)
-        
-        # 更新模板列表
-        self.update_template_list()
+        self.template_list.configure(yscrollcommand=scrollbar.set)
         
         # 创建新模板框架
-        new_template_frame = ttk.Labelframe(main_frame, text="新建模板", padding="10")
+        new_template_frame = ttk.LabelFrame(main_frame, text="新建模板", padding=10)
         new_template_frame.pack(fill=tk.X, pady=(0, 20))
         
         # 模板名称
+        name_frame = ttk.Frame(new_template_frame)
+        name_frame.pack(fill=tk.X, pady=(0, 10))
+        
         ttk.Label(
-            new_template_frame,
+            name_frame,
             text="模板名称:",
             font=('微软雅黑', 10)
-        ).pack(anchor=tk.W, pady=(0, 5))
+        ).pack(side=tk.LEFT)
         
         self.template_name_var = tk.StringVar()
         ttk.Entry(
-            new_template_frame,
+            name_frame,
             textvariable=self.template_name_var,
-            width=40
-        ).pack(fill=tk.X, pady=(0, 10))
+            width=30
+        ).pack(side=tk.LEFT, padx=(10, 0))
         
-        # 转换设置
-        settings_frame = ttk.Frame(new_template_frame)
-        settings_frame.pack(fill=tk.X, pady=5)
+        # 转换质量
+        quality_frame = ttk.Frame(new_template_frame)
+        quality_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # PDF质量设置
         ttk.Label(
-            settings_frame,
-            text="PDF质量:",
+            quality_frame,
+            text="转换质量:",
             font=('微软雅黑', 10)
-        ).pack(side=tk.LEFT, padx=(0, 5))
+        ).pack(side=tk.LEFT)
         
-        self.template_quality_var = tk.StringVar(value="高质量")
-        quality_combo = ttk.Combobox(
-            settings_frame,
-            textvariable=self.template_quality_var,
-            values=["高质量", "标准", "低质量"],
-            width=10,
-            state="readonly"
-        )
-        quality_combo.pack(side=tk.LEFT, padx=5)
+        self.template_quality_var = tk.StringVar(value="标准")
+        for quality in ["高质量", "标准", "低质量"]:
+            ttk.Radiobutton(
+                quality_frame,
+                text=quality,
+                variable=self.template_quality_var,
+                value=quality,
+                bootstyle="info-toolbutton"
+            ).pack(side=tk.LEFT, padx=(10, 0))
         
-        # 输出格式设置
-        formats_frame = ttk.Frame(new_template_frame)
-        formats_frame.pack(fill=tk.X, pady=5)
+        # 输出格式
+        format_frame = ttk.Frame(new_template_frame)
+        format_frame.pack(fill=tk.X)
         
         ttk.Label(
-            formats_frame,
+            format_frame,
             text="输出格式:",
             font=('微软雅黑', 10)
-        ).pack(side=tk.LEFT, padx=(0, 5))
+        ).pack(side=tk.LEFT)
         
         self.template_format_var = tk.StringVar(value="pdf")
-        format_combo = ttk.Combobox(
-            formats_frame,
-            textvariable=self.template_format_var,
-            values=["pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt"],
-            width=10,
-            state="readonly"
-        )
-        format_combo.pack(side=tk.LEFT, padx=5)
+        for fmt in ["pdf", "docx", "xlsx", "pptx"]:
+            ttk.Radiobutton(
+                format_frame,
+                text=fmt.upper(),
+                variable=self.template_format_var,
+                value=fmt,
+                bootstyle="info-toolbutton"
+            ).pack(side=tk.LEFT, padx=(10, 0))
         
         # 按钮框架
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=10)
+        button_frame.pack(fill=tk.X)
         
         # 保存模板按钮
-        save_button = ttk.Button(
+        ttk.Button(
             button_frame,
             text="保存模板",
             command=lambda: self.save_template(dialog),
             width=15,
-            bootstyle="success"
-        )
-        save_button.pack(side=tk.LEFT, padx=5, expand=True)
+            bootstyle="info"
+        ).pack(side=tk.LEFT, padx=5, expand=True)
         
         # 应用模板按钮
-        apply_button = ttk.Button(
+        ttk.Button(
             button_frame,
             text="应用模板",
             command=lambda: self.apply_template(dialog),
             width=15,
             bootstyle="info"
-        )
-        apply_button.pack(side=tk.LEFT, padx=5, expand=True)
+        ).pack(side=tk.LEFT, padx=5, expand=True)
         
         # 删除模板按钮
-        delete_button = ttk.Button(
+        ttk.Button(
             button_frame,
             text="删除模板",
             command=self.delete_template,
             width=15,
             bootstyle="danger"
-        )
-        delete_button.pack(side=tk.LEFT, padx=5, expand=True)
+        ).pack(side=tk.LEFT, padx=5, expand=True)
+        
+        # 设置对话框为模态
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # 更新模板列表
+        self.update_template_list()
     
     def update_template_list(self):
         """更新模板列表显示"""
@@ -3395,38 +3413,84 @@ class FileConverterApp:
         """创建更新进度窗口"""
         self.update_window = tk.Toplevel(self.root)
         self.update_window.title("更新进度")
-        self.update_window.geometry("400x200")
-        self.update_window.resizable(False, False)
+        
+        # 获取屏幕尺寸
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        
+        # 计算窗口大小（宽度为屏幕的25%，高度为屏幕的30%）
+        window_width = int(screen_width * 0.25)
+        window_height = int(screen_height * 0.3)
+        
+        # 设置最小尺寸
+        self.update_window.minsize(300, 250)
+        
+        # 计算窗口位置使其居中
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        
+        # 设置窗口大小和位置
+        self.update_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.update_window.withdraw()  # 初始时隐藏
+        
+        # 创建主框架
+        main_frame = ttk.Frame(self.update_window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         # 创建进度条
         self.update_progress = ttk.Progressbar(
-            self.update_window,
-            length=300,
-            mode='determinate'
+            main_frame,
+            mode='determinate',
+            style="info.Horizontal.TProgressbar"
         )
-        self.update_progress.pack(pady=20)
+        self.update_progress.pack(fill=tk.X, pady=(0, 10))
         
-        # 创建状态标签
-        self.update_status = ttk.Label(
-            self.update_window,
-            text="正在检查更新...",
-            font=('微软雅黑', 10)
+        # 创建状态文本框架（带滚动条）
+        status_frame = ttk.Frame(main_frame)
+        status_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # 获取主题颜色
+        style = ttk.Style()
+        bg_color = style.lookup('TFrame', 'background') or '#ffffff'
+        fg_color = style.lookup('TLabel', 'foreground') or '#000000'
+        
+        # 创建文本框
+        self.update_status = tk.Text(
+            status_frame,
+            font=('微软雅黑', 10),
+            wrap=tk.WORD,
+            height=8,
+            relief=tk.FLAT,
+            bg=bg_color,
+            fg=fg_color
         )
-        self.update_status.pack(pady=10)
+        self.update_status.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # 添加滚动条
+        scrollbar = ttk.Scrollbar(
+            status_frame,
+            orient=tk.VERTICAL,
+            command=self.update_status.yview
+        )
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.update_status.configure(yscrollcommand=scrollbar.set)
+        
+        # 禁用文本框编辑
+        self.update_status.configure(state='disabled')
         
         # 创建按钮框架
-        button_frame = ttk.Frame(self.update_window)
-        button_frame.pack(pady=10)
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
         
         # 取消按钮
         self.cancel_button = ttk.Button(
             button_frame,
             text="取消",
             command=self.cancel_update,
-            width=10
+            width=10,
+            bootstyle="secondary"
         )
-        self.cancel_button.pack(side=tk.LEFT, padx=5)
+        self.cancel_button.pack(side=tk.LEFT, padx=5, expand=True)
         
         # 安装按钮
         self.install_button = ttk.Button(
@@ -3434,14 +3498,23 @@ class FileConverterApp:
             text="安装",
             command=self.install_update,
             width=10,
-            state='disabled'
+            state='disabled',
+            bootstyle="info"
         )
-        self.install_button.pack(side=tk.LEFT, padx=5)
+        self.install_button.pack(side=tk.LEFT, padx=5, expand=True)
     
+    def update_status_text(self, message):
+        """更新状态消息"""
+        self.update_status.configure(state='normal')
+        self.update_status.delete(1.0, tk.END)
+        self.update_status.insert(tk.END, message)
+        self.update_status.configure(state='disabled')
+        self.update_status.see(tk.END)  # 滚动到最新内容
+        
     def check_for_updates(self):
         """检查更新"""
         self.update_window.deiconify()
-        self.update_status.config(text="正在检查更新...")
+        self.update_status_text("正在检查更新...")
         self.update_progress['value'] = 0
         self.cancel_button.config(state='normal')
         self.install_button.config(state='disabled')
@@ -3449,34 +3522,38 @@ class FileConverterApp:
         def check():
             update_info = self.update_manager.check_update()
             if update_info['available']:
-                self.update_status.config(
-                    text=f"发现新版本 {update_info['version']}\n{update_info['description']}"
-                )
+                message = f"发现新版本 {update_info['version']}\n\n"
+                message += "更新内容：\n"
+                message += update_info['description']
+                self.update_status_text(message)
                 self.install_button.config(state='normal')
             else:
-                self.update_status.config(text="当前已是最新版本")
-                self.root.after(2000, self.update_window.withdraw)
+                if 'error' in update_info:
+                    self.update_status_text(f"检查更新失败：{update_info['error']}")
+                else:
+                    self.update_status_text("当前已是最新版本")
+                    self.root.after(2000, self.update_window.withdraw)
         
         Thread(target=check).start()
     
     def update_download_progress(self, progress):
         """更新下载进度"""
         self.update_progress['value'] = progress
-        self.update_status.config(text=f"正在下载更新: {progress:.1f}%")
+        self.update_status_text(f"正在下载更新: {progress:.1f}%")
     
     def install_update(self):
         """安装更新"""
         self.install_button.config(state='disabled')
         self.cancel_button.config(state='disabled')
-        self.update_status.config(text="正在安装更新...")
+        self.update_status_text("正在安装更新...")
         
         def install():
             if self.update_manager.install_update():
-                self.update_status.config(text="更新安装完成，请重启程序")
+                self.update_status_text("更新安装完成，请重启程序")
                 self.install_button.config(text="重启", command=self.restart_app)
                 self.install_button.config(state='normal')
             else:
-                self.update_status.config(text="更新安装失败")
+                self.update_status_text("更新安装失败")
                 self.cancel_button.config(state='normal')
         
         Thread(target=install).start()
@@ -3535,6 +3612,27 @@ class FileConverterApp:
                 
         except Exception as e:
             print(f"更新布局时出错：{str(e)}")
+
+    def calculate_window_size(self, width_ratio=0.4, height_ratio=0.6, min_width=600, min_height=400):
+        """计算窗口大小和位置
+        Args:
+            width_ratio: 窗口宽度占屏幕宽度的比例
+            height_ratio: 窗口高度占屏幕高度的比例
+            min_width: 最小宽度
+            min_height: 最小高度
+        Returns:
+            tuple: (width, height, x, y) 窗口的宽度、高度和位置
+        """
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        
+        window_width = max(int(screen_width * width_ratio), min_width)
+        window_height = max(int(screen_height * height_ratio), min_height)
+        
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        
+        return window_width, window_height, x, y
 
 if __name__ == '__main__':
     # 设置多进程启动方法
