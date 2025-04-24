@@ -31,9 +31,24 @@ except:
     pass
 
 def convert_file(file_path, save_path, conv_type, quality, config):
+    # 确保在子进程中重新初始化COM
+    try:
+        import pythoncom
+        pythoncom.CoInitialize()
+    except ImportError:
+        pass
+        
     try:
         file_name = os.path.basename(file_path)
         file_ext = os.path.splitext(file_name)[1].lower()
+        
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            return {"success": False, "file_name": file_name, "error": "文件不存在"}
+            
+        # 检查目标目录是否存在，不存在则创建
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
         
         # 根据转换类型和配置确定输出格式
         if conv_type == "pdf2word":
@@ -58,100 +73,143 @@ def convert_file(file_path, save_path, conv_type, quality, config):
         # 构建输出文件路径
         output_path = os.path.join(save_path, os.path.splitext(file_name)[0] + output_ext)
         
+        # 确保输出目录存在
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
         if conv_type == "pdf2word":
             cv = Converter(file_path)
-            # 根据质量设置调整转换参数
-            if quality == "fast":
-                cv.convert(output_path, pages=None, start=0, end=None)
-            elif quality == "normal":
-                cv.convert(output_path, pages=None, start=0, end=None, 
-                         layout_analysis=True, table_analysis=True)
-            else:  # high
-                cv.convert(output_path, pages=None, start=0, end=None, 
-                         layout_analysis=True, table_analysis=True, 
-                         image_analysis=True)
-            cv.close()
+            try:
+                # 根据质量设置调整转换参数
+                if quality == "fast":
+                    cv.convert(output_path, pages=None, start=0, end=None)
+                elif quality == "normal":
+                    cv.convert(output_path, pages=None, start=0, end=None, 
+                             layout_analysis=True, table_analysis=True)
+                else:  # high
+                    cv.convert(output_path, pages=None, start=0, end=None, 
+                             layout_analysis=True, table_analysis=True, 
+                             image_analysis=True)
+            finally:
+                cv.close()
         elif conv_type == "word2pdf":
-            convert(file_path, output_path)
+            # 使用 win32com 替代 docx2pdf
+            try:
+                word = win32com.client.Dispatch("Word.Application")
+                word.Visible = False
+                doc = word.Documents.Open(file_path)
+                doc.SaveAs(output_path, FileFormat=17)  # 17 represents PDF format
+                doc.Close()
+                word.Quit()
+            except Exception as e:
+                # 如果 win32com 失败，尝试使用 docx2pdf
+                convert(file_path, output_path)
         elif conv_type == "excel2pdf":
-            from win32com import client
-            excel = client.Dispatch("Excel.Application")
-            excel.Visible = False
-            wb = excel.Workbooks.Open(file_path)
-            wb.ExportAsFixedFormat(0, output_path)
-            wb.Close()
-            excel.Quit()
+            excel = win32com.client.Dispatch("Excel.Application")
+            try:
+                excel.Visible = False
+                wb = excel.Workbooks.Open(file_path)
+                wb.ExportAsFixedFormat(0, output_path)
+                wb.Close()
+            finally:
+                excel.Quit()
         elif conv_type == "pdf2excel":
             # 使用pdf2docx将PDF转换为Word，然后使用python-docx处理
             from pdf2docx import Converter
             from docx import Document
             import pandas as pd
             
-            # 先转换为Word
-            temp_docx = output_path.replace('.xlsx', '.docx')
-            cv = Converter(file_path)
-            cv.convert(temp_docx)
-            cv.close()
+            # 创建临时文件路径
+            temp_docx = os.path.join(save_path, f"temp_{os.path.splitext(file_name)[0]}.docx")
             
-            # 从Word中提取表格数据
-            doc = Document(temp_docx)
-            data = []
-            for table in doc.tables:
-                for row in table.rows:
-                    data.append([cell.text for cell in row.cells])
-            
-            # 保存为Excel
-            df = pd.DataFrame(data)
-            df.to_excel(output_path, index=False, header=False)
-            
-            # 删除临时文件
-            os.remove(temp_docx)
+            try:
+                # 先转换为Word
+                cv = Converter(file_path)
+                cv.convert(temp_docx)
+                cv.close()
+                
+                # 从Word中提取表格数据
+                doc = Document(temp_docx)
+                data = []
+                for table in doc.tables:
+                    for row in table.rows:
+                        data.append([cell.text for cell in row.cells])
+                
+                # 保存为Excel
+                df = pd.DataFrame(data)
+                df.to_excel(output_path, index=False, header=False)
+            finally:
+                # 删除临时文件
+                if os.path.exists(temp_docx):
+                    try:
+                        os.remove(temp_docx)
+                    except:
+                        pass
+                        
         elif conv_type == "ppt2pdf":
-            from win32com import client
-            powerpoint = client.Dispatch("PowerPoint.Application")
-            powerpoint.Visible = False
-            presentation = powerpoint.Presentations.Open(file_path)
-            presentation.SaveAs(output_path, 32)  # 32是PDF格式
-            presentation.Close()
-            powerpoint.Quit()
+            powerpoint = win32com.client.Dispatch("PowerPoint.Application")
+            try:
+                powerpoint.Visible = False
+                presentation = powerpoint.Presentations.Open(file_path)
+                presentation.SaveAs(output_path, 32)  # 32是PDF格式
+                presentation.Close()
+            finally:
+                powerpoint.Quit()
+                
         elif conv_type == "pdf2ppt":
             # 使用pdf2docx将PDF转换为Word，然后使用python-pptx创建PPT
             from pdf2docx import Converter
             from docx import Document
             from pptx import Presentation
             
-            # 先转换为Word
-            temp_docx = output_path.replace('.pptx', '.docx')
-            cv = Converter(file_path)
-            cv.convert(temp_docx)
-            cv.close()
+            # 创建临时文件路径
+            temp_docx = os.path.join(save_path, f"temp_{os.path.splitext(file_name)[0]}.docx")
             
-            # 从Word中提取内容创建PPT
-            doc = Document(temp_docx)
-            prs = Presentation()
-            
-            for para in doc.paragraphs:
-                if para.text.strip():
-                    slide = prs.slides.add_slide(prs.slide_layouts[1])
-                    title = slide.shapes.title
-                    content = slide.placeholders[1]
-                    title.text = para.text
-                    content.text = ""  # 清空内容占位符
-            
-            prs.save(output_path)
-            
-            # 删除临时文件
-            os.remove(temp_docx)
+            try:
+                # 先转换为Word
+                cv = Converter(file_path)
+                cv.convert(temp_docx)
+                cv.close()
+                
+                # 从Word中提取内容创建PPT
+                doc = Document(temp_docx)
+                prs = Presentation()
+                
+                for para in doc.paragraphs:
+                    if para.text.strip():
+                        slide = prs.slides.add_slide(prs.slide_layouts[1])
+                        title = slide.shapes.title
+                        content = slide.placeholders[1]
+                        title.text = para.text
+                        content.text = ""  # 清空内容占位符
+                
+                prs.save(output_path)
+            finally:
+                # 删除临时文件
+                if os.path.exists(temp_docx):
+                    try:
+                        os.remove(temp_docx)
+                    except:
+                        pass
         
+        # 检查输出文件是否成功创建
+        if not os.path.exists(output_path):
+            return {"success": False, "file_name": file_name, "error": "转换失败，未生成输出文件"}
+            
         return {"success": True, "file_name": file_name, "output_path": output_path}
+        
     except Exception as e:
         return {"success": False, "file_name": file_name, "error": str(e)}
+    finally:
+        try:
+            pythoncom.CoUninitialize()
+        except:
+            pass
 
 class UpdateManager:
     def __init__(self, app):
         self.app = app
         self.update_url = "https://api.github.com/repos/alove77580/fileConvert/releases/latest"  # 修改为正确的仓库地址
-        self.current_version = "1.0.1"  # 当前版本号
+        self.current_version = "1.0.2"  # 当前版本号
         self.download_path = "update.zip"
         
     def check_update(self):
@@ -3478,7 +3536,11 @@ class FileConverterApp:
         except Exception as e:
             print(f"更新布局时出错：{str(e)}")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
+    # 设置多进程启动方法
+    if sys.platform.startswith('win'):
+        multiprocessing.freeze_support()
+        
     root = tk.Tk()
     app = FileConverterApp(root)
     root.mainloop() 
