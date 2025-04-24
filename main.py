@@ -245,9 +245,26 @@ class FileConverterApp:
     def __init__(self, root):
         self.root = root
         self.root.title("星空-文件转换工具")
-        self.root.geometry("1000x1500")  # 设置初始大小
-        self.root.minsize(1000, 1500)  # 设置最小大小
-        self.root.resizable(True, True)  # 允许调整大小
+        
+        # 获取屏幕分辨率
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        
+        # 计算初始窗口大小（宽度为屏幕的40%，高度为50%）
+        initial_width = int(screen_width * 0.4)
+        initial_height = int(screen_height * 0.5)
+        
+        # 设置初始窗口大小和位置
+        self.root.geometry(f"{initial_width}x{initial_height}")
+        self.root.minsize(600, 400)  # 设置最小大小
+        
+        # 计算窗口居中位置
+        x = (screen_width - initial_width) // 2
+        y = (screen_height - initial_height) // 2
+        self.root.geometry(f"{initial_width}x{initial_height}+{x}+{y}")
+        
+        # 绑定窗口大小变化事件
+        self.root.bind('<Configure>', self.on_window_resize)
         
         # 初始化配置
         self.config = self.load_config()
@@ -264,8 +281,8 @@ class FileConverterApp:
         # 创建历史记录窗口
         self.history_window = tk.Toplevel(root)
         self.history_window.title("转换历史")
-        self.history_window.geometry("800x600")  # 设置初始大小
-        self.history_window.minsize(600, 400)  # 设置最小大小
+        self.history_window.geometry("600x400")  # 设置初始大小
+        self.history_window.minsize(400, 300)  # 设置最小大小
         self.history_window.resizable(True, True)  # 允许调整大小
         self.history_window_visible = True
         
@@ -3430,6 +3447,36 @@ class FileConverterApp:
         # 可以在这里添加更多支持的转换类型，例如 pdf2excel, pdf2ppt
         else:
             return None
+
+    def on_window_resize(self, event):
+        """处理窗口大小变化事件"""
+        if event.widget == self.root:  # 确保是主窗口的大小变化
+            # 更新所有框架的布局
+            self.update_layout()
+            
+    def update_layout(self):
+        """更新界面布局"""
+        try:
+            # 获取当前窗口大小
+            width = self.root.winfo_width()
+            height = self.root.winfo_height()
+            
+            # 更新主框架的内边距
+            padding = min(20, width // 50)  # 根据窗口宽度动态调整内边距
+            self.main_frame.configure(padding=padding)
+            
+            # 更新文件列表框架的内边距
+            self.file_frame.configure(padding=padding)
+            
+            # 更新按钮框架的布局
+            self.button_frame.pack_configure(pady=padding)
+            
+            # 更新历史记录窗口位置
+            if self.history_window_visible:
+                self.on_root_move(None)
+                
+        except Exception as e:
+            print(f"更新布局时出错：{str(e)}")
 
 if __name__ == "__main__":
     root = tk.Tk()
